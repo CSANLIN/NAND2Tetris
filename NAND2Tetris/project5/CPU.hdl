@@ -1,0 +1,86 @@
+// This file is part of www.nand2tetris.org
+// and the book "The Elements of Computing Systems"
+// by Nisan and Schocken, MIT Press.
+// File name: projects/5/CPU.hdl
+/**
+ * The Hack Central Processing unit (CPU).
+ * Parses the binary code in the instruction input and executes it according to the
+ * Hack machine language specification. In the case of a C-instruction, computes the
+ * function specified by the instruction. If the instruction specifies to read a memory
+ * value, the inM input is expected to contain this value. If the instruction specifies
+ * to write a value to the memory, sets the outM output to this value, sets the addressM
+ * output to the target address, and asserts the writeM output (when writeM = 0, any
+ * value may appear in outM).
+ * If the reset input is 0, computes the address of the next instruction and sets the
+ * pc output to that value. If the reset input is 1, sets pc to 0.
+ * Note: The outM and writeM outputs are combinational: they are affected by the
+ * instruction's execution during the current cycle. The addressM and pc outputs are
+ * clocked: although they are affected by the instruction's execution, they commit to
+ * their new values only in the next cycle.
+ */
+CHIP CPU {
+
+    IN  inM[16],         // M value input  (M = contents of RAM[A])
+        instruction[16], // Instruction for execution
+        reset;           // Signals whether to re-start the current
+                         // program (reset==1) or continue executing
+                         // the current program (reset==0).
+
+    OUT outM[16],        // M value output
+        writeM,          // Write to M? 
+        addressM[15],    // Address in data memory (of M)
+        pc[15];          // address of next instruction
+
+    PARTS:
+	//// Replace this comment with your code.
+
+    //A寄存器处理逻辑
+    //如果是A指令，将instruction输入到A寄存器
+    //如果是C指令且dest=A将ALUout输入到A寄存器
+    
+    //当指令是A或C且dest=A加载
+    Not(in= instruction[15], out=isA);//处理A指令
+    Or(a= isA, b= instruction[5], out= loadA);//处理加载
+    ARegister(in= registerA, load= loadA, out= outA,out[0..14]=addressM); 
+    Mux16(a= instruction, b= ALUout, sel= instruction[15], out= registerA);//接收指令和alu
+
+    // 根据指令中的a位域判断将AR的输出或者inM输入到ALU
+    Mux16(a = outA, b = inM, sel = instruction[12], out = outAM);
+
+    //CPU输出引脚
+    And(a= instruction[15], b= instruction[3], out= writeM);
+
+    //D寄存器处理逻辑
+    And(a= instruction[15], b= instruction[4], out= loadD);
+    DRegister(in= ALUout, load= loadD, out= outD);
+
+    And(a = instruction[15], b = instruction[6], out = no);
+    And(a = instruction[15], b = instruction[7], out = f);
+    And(a = instruction[15], b = instruction[8], out = ny);
+    And(a = instruction[15], b = instruction[9], out = zy);
+    And(a = instruction[15], b = instruction[10], out = nx);
+    And(a = instruction[15], b = instruction[11], out = zx);
+
+    //ALU处理逻辑
+    ALU(x= outD, y= outAM, zx= zx, nx= nx,
+        zy= zy, ny= ny, f= f,
+        no= no, out= ALUout,out=outM, zr= zr, ng= ng);
+
+    //PC处理
+    //1.跳转逻辑
+    And(a = instruction[15], b = instruction[0], out = JGT);
+    And(a = instruction[15], b = instruction[1], out = JEQ);
+    And(a = instruction[15], b = instruction[2], out = JLT);
+
+    And(a = ng, b = JLT, out = GOJLT);
+    And(a = zr, b = JEQ, out = GOJEQ);
+    // 输出是否大于0
+    Not(in = ng, out = notNg);
+    Not(in = zr, out = notZr);
+    And(a = notNg, b = notZr, out = isOutGt);
+    And(a = isOutGt, b = JGT, out = isGtJump);
+    Or(a = GOJLT, b = GOJEQ, out = isJump);
+    Or(a = isJump, b = isGtJump, out = jump);
+
+    PC(in = outA, load = jump, inc = true, reset = reset, out[0..14] = pc);
+}
